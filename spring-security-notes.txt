@@ -784,3 +784,35 @@ security:
 
 prepare a static html page: index.html
 This is it: open: http://localhost:8080/#_=_
+
+==========================================================
+
+oAuth2 (Only Authorization)
+=============
+
+User			Person						You
+Application		Where you want to login		Spotify
+API				Auth via these APIs			fb
+
+Passwords are never passed around by fb to Spotify to login. Why would one?
+
+Actors:
+
+1. User
+2. Auth Server: Responsible for Authorizating user and generating access token
+3. Resource Server
+
+1. (1-2) User will make "Authorization Reqeust" to Authorization Server(fbOwned)
+2. (2-1) Authorization Server will grant the reqeuest along with Authorization Code
+3. (1-2) User will use AuthCode and again connect with Authorization Server to get the access token
+4. (2-1) Authorization Server generates Access Token and shares with User ==> This accessToken will be used while connecting with resource server
+5. (1-3) Using accessToken, user connects Resource Server to access the resource
+6. (3-1) Resource server validates access token and responds with the requetsed resource
+
+
+
+oAuth1 vs oAuth2: https://stackoverflow.com/a/27458812/7212399
+
+
+Checkout oAuth1.png and oAuth2.png
+
