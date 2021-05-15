@@ -1,0 +1,16 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: spring-boot-security-ldap
+  ldap:
+    embedded:
+      port: 8389 #on which LDAP server will run
+      ldif: classpath:ldap-data.ldif #ldap data interchange format
+      base-dn: dc=springframework,dc=org
+
+logging:
+  level:
+    org: info
+    org.apache: info

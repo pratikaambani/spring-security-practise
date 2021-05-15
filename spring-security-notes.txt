@@ -1,0 +1,786 @@
+---------------
+spring-security
+---------------
+Java Brains: https://www.youtube.com/playlist?list=PLqq-6Pq4lTTYTEooakHchTGglSvkZAjnE
+Time: 300 minutes
+
+1. What is Spring Security really all about?
+--------------------------------------------
+
+Handles:
+	session fixation
+	Clickjacking
+	Cross Site Scripting Forgery
+
+Can do:
+	username/password authentication
+	SSO / OKTA / LDAP based Authentication
+	App level authorization
+	Intra App authorization like: OAuth
+	Microservice security(using tokens like JWT)
+	Method level security
+	
+Core Concepts:
+	Authentication
+	Authorization
+	Principal
+	Granted Authority
+	Roles
+
+
+2. Five Spring Security Concepts - Authentication vs authorization
+------------------------------------------------------------------
+
+Authentication		: who are you
+Authorization		: what can you access
+Principal			: Currently logged in user(the person that we've identified through process of Authentication)
+Granted Authority	: Individual authority ex. read, write, execute
+Roles				: Grouping of permissions
+
+
+3. Adding Spring Security to new Spring Boot project
+----------------------------------------------------
+
+3.1 The current Hello World Application
+---
+http://localhost:8080
+displays Hiiiiiiiiii
+
+3.2 Adding Spring Security dependency
+---
+
+Add dependency spring-boot-starter-security and no configurations
+
+http://localhost:8080
+you'll face login form
+
+Filters are there in SS that will intercept above request and show login page
+Servlet filter is picked depending on the URL that was clicked
+
+This dependency(spring-boot-starter-security):
+	adds mandatory authentication for ALL the URLs
+		except: error page
+	adds login form
+	handles login errors, if any
+	creates a user and a default password
+		username: user password: printed in console when application started
+
+3.3 Using custom username and password
+---
+Add below properties
+
+spring:
+  security:
+    user:
+      name: pratik
+      password: secretpw
+
+
+4. How to configure Spring Security Authentication
+--------------------------------------------------
+
+4.1 
+---
+creating in-memory users and let SS verify them
+
+
+Authentication Manager: 
+	Way to configure authentication in SS
+	has a method: authenticate()
+
+	Auth Manager configuration:
+		We won't directly interact with Authentication Manager
+		we'll use builder pattern
+		We have AuthenticationManagerBuilder class
+		It asks: what kinda Auth do you want. we'll answer - In-memory Auth
+	
+		How to use AuthenticationManagerBuilder:
+			using class that has a method configure(AuthenticationManagerBuilder authenticationManagerBuilder ) <-- override this method
+			Override above and use whatever authenticate method you want
+
+code
+####
+create class SecurityConfiguration 
+that "extends WebSecurityConfigurerAdapter" 
+annotate with @EnableWebSecurity
+override method: configure(AuthenticationManagerBuilder auth)
+
+Now SS will never accept plain text password, it will assume that there is always some kinda encoder is used
+
+There are multiple types of password encoders
+Set password encoder:
+    @Bean
+    public PasswordEncoder getPasswordEncoder() {
+        return NoOpPasswordEncoder.getInstance();
+    }
+NoOpPasswordEncoder: Plain text password
+
+PS: Always deal with hashed passwords
+
+
+5. How to configure Spring Security Authorization
+-------------------------------------------------
+
+5.1 Authorization: To enable/disable access based on user
+---
+
+Default behavior is all APIs need authentication
+
+--------------------------------------------------------
+|		API			|		Roles allowed to access it |
+|----------------------------------------------------- |
+|	/               |		All(unauthenticated)	   |
+|	/user           |		USER and ADMIN roles	   |
+|	/admin          |		ADMIN role				   |
+--------------------------------------------------------
+
+
+HttpSecurity: Let's you configure what are the paths and what are the access restrictions on those paths
+
+
+AuthenticationManagerBuilder : Authentication
+HttpSecurity: Authorization
+
+
+code
+####
+http
+	authorizeRequests()
+	antMatchers(): specify paths on which restrictions have to be applied | /** means all paths	
+	hasRole: allows single role | .hasRole("USER")
+	hasAnyRole: allows multiple roles | .hasAnyRole("USER", "ADMIN")
+	
+test: USER
+Pratik: ADMIN
+
+
+http://localhost:8080/
+
+test user won't be able to login #403
+Pratik user will be able to because he is admin and his role is given access to /**(all APIs)
+
+5.2 Logging out existing user
+---
+
+http://localhost:8080/
+Once you attempt to login with test:tester user you will be shown 403 error. now you cannot login with Pratik:password1 on the same browser. You need to logout using: http://localhost:8080/logout
+
+
+5.3 Different API/URL access to different USER_ROLES
+---
+Coming back to above diagram. access to particular URL
+
+
+Lets everybody access resources: .antMatchers("/", "static/css", "static/js",).permitAll()
+
+Order: most restrictive to least restrictive
+ADMIN < USER < ALL
+
+.antMatchers("/admin").hasRole("ADMIN")
+.antMatchers("/user").hasRole("USER")
+.antMatchers("/**").permitAll()
+
+http://localhost:8080/user	: only user
+http://localhost:8080/admin	: only admin
+http://localhost:8080/		: All
+
+
+6. How Spring Security Authentication works
+-------------------------------------------
+covers: bootstrap and authentication
+
+6.1 Bootstrap | DelegatingFilterProxy
+---
+
+How adding just a security dependency triggers security? -- Filters
+
+URL and Servlet have 1-1 mapping 
+but
+URL and Filters can have *-* mapping
+
+DelegatingFilterProxy: 
+	A filter that comes into the picture when we inject SS dependency, if we are not using Spring Boot, we need to explicitly call this filter in web.xml.
+	does nothing but delegates the request to other filters, 
+	one of them is authentication filter
+	Also delegates to some Authorization filters
+
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app>
+    <filter>
+        <filter-name>springSecurityFilterChain</filter-name>
+        <filter-class>
+            org.springframework.web.filter.DelegatingFilterProxy
+        </filter-class>
+    </filter>
+
+    <filter-mapping>
+        <filter-name>springSecurityFilterChain</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+</web-app>
+
+
+/* : filters all incoming requests
+
+6.2 Authentication, AuthenticationFilter, Providers, AuthenticationProvider, ProviderManager, AuthenticationManager, UserDetailService
+---
+
+Generally,
+input  - un:pw
+output - boolean: Yes:No
+
+SS doesn't return a boolean output, it returns Principal
+
+"Providers" do the authentication
+
+AuthenticationProvider.authenticate() interface does the authentication
+
+User opens login screen - enters credentials - AuthenticationProvider.authenticate() processes authentication - success-clears out the credentials and generates principal - responds with Principal as output
+
+Authentication.getDetails()		: before authentication
+Authentication.getPrincipal()	: after authentication
+Authentication.isAuthenticated(): boolean, returns false if Auth is not yet happened
+
+1 application can have multiple authentication strategies/providers
+Example: all below in same class
+
+AuthenticationProvider.authenticate() : I'll do Password Auth
+AuthenticationProvider.authenticate() : I'll do OAuth
+AuthenticationProvider.authenticate() : I'll do LDAP Auth
+
+To manage all these, we have AuthenticationManager.authenticate() interface
+
+Different ways we can implement AuthenticationManager, common way is ProviderManager implements AuthenticationManager
+ProviderManager doesn't do the stuff itself, it manages all above types of authentication
+
+ProviderManager asks all other types, say I have LDAP Auth request, do you support LDAP? No? Next Provider? Yes? - Delegates the works to that AuthenticationProvider
+
+but to do above each of the AuthenticationProvider need to say what kinda Authentication it supports, for that it has boolean supports() method apart from authenticate()
+
+AuthenticationProvider needs "identity store" to validate credentials where data will be stored, it will respond an Object to AuthenticationProvider
+
+Among different type of authentications the only part changes is: "How you retrieve user from the system and where you retrieve?"
+
+UserDetailService: Takes username and returns object with user details and returns object of type UserDetails that contains information like: AC is valid, locked, inactive, unavailable
+	loadByUsername()
+	
+AuthenticationFilter intercepts Auth request - creates Auth object with creds and passes it to AuthenticationManager - finds right AuthenticationProvider that supports requested Auth - AuthenticationProvider looks up corresponding user in system by using UserDetailService - UserDetailService returns UserDetails instance which AuthenticationProvider verifies - Auth happens - if Auth is successful the Auth object is returned back with Principal and Authority - Principal is instance of UserDetails object - Authorization object goes back to AuthenticationFilter
+
+
+What happens if Auth is not successful?
+AuthenticationProvider throws UnAuthenticatedException - exception goes back to AuthenticationFilter and user sees exception being thrown
+
+What happens after auth completes?
+It takes the Principal object and saves into ThreadLocal. Si that we can know who is currently logged-in
+
+What about subsequent requests?
+We can't hold on to thread local, has this to be in user session?
+
+Mechanism to authenticate only once and access for duration of that session. We have filter for that.
+
+Manages users' session
+Takes in Principal and associates it with users' session.
+
+It takes in authenticated Principal and associates it with users' session so that you don't have to authenticate with every request
+
+For every subsequent requests this filter is also responsible for taking context from session and save it to threadlocal again so it is available for the framework
+
+
+7. How to setup JDBC authentication with Spring Security from scratch
+---------------------------------------------------------------------
+
+Skipped
+
+java project so far: spring-security-practise
+
+
+8. Spring Boot + Spring Security with JPA authentication and MySQL from scratch
+-------------------------------------------------------------------------------
+
+8.1 Create Spring Boot project spring-security-jpa-mysql for the implementation
+---
+
+Listens on http://localhost:8081/
+
+Add dependencies: SS, JPA, mysql-connector
+
+8.2 Dependencies, Prepare DB, and SecurityConfiguration
+---
+
+Create MySql db from https://www.freesqldatabase.com/account/
+
+Host: sql12.freesqldatabase.com
+Database name: sql12354264
+Database user: sql12354264
+Database password: 5NXfDynVIk
+Port number: 3306
+
+Inject below rwo two types of user:
+
+CREATE TABLE USER (
+  id INT(6),
+  active VARCHAR(30) NOT NULL,
+  password VARCHAR(30) NOT NULL,
+  roles VARCHAR(50),
+  username VARCHAR(50)
+);
+
+INSERT INTO USER (  id, active, password, roles, username)
+VALUES (1, "Y", "password", "ADMIN", "Pratik"),
+       (2, "Y", "password", "USER", "user1");
+
+SELECT * from USER;
+
+8.3 Setting up hardcoded Authentication
+---
+
+Attempting authentication using hardcoded credentials
+randomUsernameString:password #checkMyUserDetails class
+
+What are we proving here?
+Here we are using UserDetailsService class to connect to "some other source" of user user information, this could be JPA.
+In that case the MyUserDetailsService.loadUserByUsername() needs to call JPA api to get user id info
+
+8.4 Setting up JPA Authentication
+---
+
+create entity class User
+Create repository: UserRepository and use findByUsername()
+Using above interface
+
+DROP TABLE USER
+
+CREATE TABLE user (
+  id INT(6),
+  active VARCHAR(30) NOT NULL,
+  password VARCHAR(30) NOT NULL,
+  roles VARCHAR(50),
+  username VARCHAR(50)
+);
+
+INSERT INTO user (  id, active, password, roles, username)
+VALUES (1, "Y", "password", "ROLE_ADMIN", "Pratik"), (2, "Y", "password", "ROLE_USER", "user1");
+
+SELECT * from user;
+
+http://localhost:8081/
+http://localhost:8081/admin --> Pratik:password
+http://localhost:8081/user  --> user1:password
+
+
+9. Spring Boot + Spring Security + LDAP from scratch
+----------------------------------------------------
+
+9.1 Add new spring security project
+---
+
+spring-boot-security-ldap --> test:tester | Pratik:password1
+
+9.2 setting up local LDAP server && Running own dev instance
+---
+
+add dependencies: unboundid-ldspsdk, spring-ldap-core, spring-security-ldap
+
+unboundid-ldspsdk prepares a local instance of ldap server.
+
+Add properties in yml
+spring:
+  ldap:
+    embedded:
+      port: 8389 #on which LDAP server will run
+      ldif: ldap-data.ldif #ldap data interchange format
+      base-dn: dc=springframework,dc=org
+
+We still need to add users by preparing above ldif file and copy content from: https://spring.io/guides/gs/authenticating-ldap/
+
+Now security configurations:
+
+Authorize any incoming request and make sure it is fully authenticated with form login
+http.authorizeRequests().anyRequest().fullyAuthenticated().and().formLogin();
+
+Now Authentication
+auth
+     .ldapAuthentication()
+     .userDnPatterns("uid={0},ou=people") //DN: Distinguish Name. A way in which user information is stored in ldif forma
+     .groupSearchBase("ou=groups")
+     .contextSource()
+     .url("ldap://localhost:8389/dc=springframework,dc=org") //where server is hosted
+     .and()
+     .passwordCompare()
+     .passwordEncoder(this.getPasswordEncoder())
+     .passwordAttribute("userPassword"); //equivalent password attribute in ldif file
+
+
+10. What is JWT authorization really about
+------------------------------------------
+
+Authz strategies:
+    Session token
+    JWT Token
+
+
+HTTP - stateless protocol
+
+When a user accesses a static page, it requests for /first page - server responds - now user requests for /second page - server responds with the content
+This works with static pages.
+
+What about dynamic pages where all pages are different for all the users?
+In this case you also need to tell the server that "Who you are"
+in all subsequent requests you'll need to provide he information required for server to identify you.
+
+Session tokens:
+    You face some issue with your ICICI CC -- you call Customer Care -- they raise a ticket for you -- next time you connect with them for further follow up -- you share the same ticket so that they identify you -- this is what session tokens do -- they create token id and passes it to browser -- browser will send this to server on every subsequent request
+Problems:
+    What if there is a LB setup before multiple instances(servers) of the application, session info will be only on 1 instance. What is subsequent request goes to another instance?
+
+
+11. What is the structure of a JWT
+----------------------------------
+
+Token with JSON value, so Value Token
+
+Decode it at http://jwt.io
+
+Structure of JWT:
+A.B.C
+A: HEADER
+    algorithm & type using with you've generated jwt
+B: PAYLOAD
+    The data that you want to send in encoded format
+    ACTUAL DATA
+C: SIGNATURE
+    Not to encrypt or decrypt
+    For server to validate if this this correct
+    Created using the algorithm mentioned in HEADER
+
+A malicious user can change HEADER and PAYLOAD but cannot change SIGNATURE #keyInSignature
+
+Sequence of events:
+    user logs in using username/password
+    server authenticates
+    server generates JWT (it has a payload - puts header there - signs it)
+    sends jwt to client
+    can be stored anywhere(local storage, session storage, cookie)
+    client passes this token on every subsequent events in http header
+    in format: Authorization:Bearer JWT
+    server examines request
+    checks Authorization value in header
+    decodes it
+    verifies signature
+
+
+Issues with JWT:
+    Can't share confidential info/ credentials as token can be decoded
+    Someone can steal your JWT and imperosnate you ---> Use HTTPS + SSL + OAuth
+    Cannot be expired ---> make a separate blacklist
+
+
+12. Spring Boot + Spring Security + JWT from scratch
+----------------------------------------------------
+
+Objectives:
+    Create new authentication API endpoint
+    Examine every incoming request for valud JWT and authorize it
+
+12.1 code: spring-security-jwt
+####
+hello world code
+
+12.2 add security and hardcode the credentials
+----
+
+pratik:password
+
+12.3 dependency and JwtUtil
+----
+
+add jwt dependencies
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt</artifactId>
+    <version>0.9.1</version>
+</dependency>
+
+create utility JwtUtil
+
+public String generateJwt(UserDetails userDetails) {
+    Map<String, Object> claims = new HashMap<>();
+    //Here we can add anything we want, this will be added to body
+    return createToken(claims, userDetails.getUsername());
+}
+
+
+    private String createToken(Map<String,Object> claims, String subject) {
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(subject) //the person who is being authenticated
+                .setIssuedAt(new Date(System.currentTimeMillis())) //current datetime
+                .setExpiration(new Date(System.currentTimeMillis()+ 1000 * 60 * 60 * 1))  //current datetime + 1 hout
+                .signWith(SignatureAlgorithm.HS256, SECRET_KEY)  //signing this token with HS256 algo and out key
+                .compact();
+    }
+
+12.4 /authentiate and JWT generation
+----
+
+Step 1
+-
+A /authenticate api to
+    accept UN PW
+    return JWT as response
+
+API clasaes:
+    AuthenticationRequest:  un, pw
+    AuthenticationResponse: jwt
+
+Security: To permit request with endpoint /authenticate
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+                .csrf().disable()
+                .authorizeRequests().antMatchers("/authenticate").permitAll()
+                .anyRequest().authenticated(); //any other request need to be authenticated
+    }
+
+
+Controller /authenticate to auth + generate JWT
+    @PostMapping("/authenticate")
+    public AuthenticationResponse createAuthenticationToken(@RequestBody AuthenticationRequest request) throws Exception {
+        try {
+            //authenticate
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword()));
+        } catch (BadCredentialsException e) {
+            throw new Exception("Incorrect username or password", e);
+        }
+
+        //generate JWT
+        final UserDetails userDetails = myUserDetailsService.loadUserByUsername(request.getUsername());
+        String jwt = JwtUtil.generateJwt(userDetails);
+        return new AuthenticationResponse(jwt);
+    }
+
+HTTP POST http://localhost:8080/authenticate
+body:
+    {
+        "username" : "pratik",
+        "password" : "password"
+
+    }
+
+here: HTTP GET http://localhost:8080/admin won't work because we haven't granted permission to it
+even after adding Authorization: Bearer GENERATED_JWT in request header also won't work
+
+12.5 To cater subsequent requests post login and JWT validation
+----
+Step 2
+-
+    Get username from jwt
+    validate it
+
+Create a filter: JwtRequestFilter and extend filter: OncePerRequestFilter
+JwtRequestFilter will intercept every request once and examine the header
+
+Note:
+    This was an example with hardcoded credentials, but even with any kind of external database no JWT related implementation requires changes.
+    Changes would be required in MyUserDetailsService.loadUserByUsername()
+    Replace: return new User("pratik", "password", new ArrayList<>());
+    With: whatever DB setup contains creds
+
+
+13 What is OAuth really all about - OAuth tutorial
+--------------------------------------------------
+
+OAuth:
+    It is all about Authorization and not about Authentication
+    Was written initially to authorize between services
+    Example: You have a Photo Printing site which requires access to your Google Drive to get your photos which are stored there
+    Two versions: OAuth 1.0 and OAuth 2.0, 2 is most widely used nowadays
+    Used for access delegation
+
+How OAuth 2 works?
+    Valet parking example: Some cars come with Normal + Valet key.
+    Valet key is key with reduced access: can start/stop car. Can't open fuel tank, trunk.
+    So that the valet guys doesn't access other stuff in your car while he is going to park your car.
+    3 parties here: Car Owner, Car, Valet Guy. Owner has full access, Valet guy has limited access.
+
+The OAuth Flow:
+    Example: You have a Photo Printing site which requires access to your Google Drive to get your photos which are stored there
+    Now Google Drive trusts you coz you are logged in there, Photo printing site trusts you coz you are logged in there.
+    But Google Drive and Photo printing site do not trust each other
+    So what happens of OAuth is implemented?
+        when PPS goes to GD, GD goes to user stating PPS wants to access some of your files and do you trust it?
+        You'll ask GD that who is asking for access and what kinda permission does he want?
+        You find it legit, you tell GD to allow access to PPS/
+        GD tells PPS that User has allowed you to access me, you can have access
+        Here GD gives a token to PPS called: Authorization token
+        Consider this Authorization token as key in Valet example, this token has limited access
+        PPS is now able to access GD
+        Every time PPS needs to access GD, PPS hands token in the request to GD
+        GD verifies it with the token it sent last time to PPS
+    Another example is when we allow access to facebook while logging-in/registering to some sites
+
+Access Token:
+    It contains user allowed permissions
+    Cannot be tampered #trustable
+    We don't ave to create it #GDDoesItForUs
+    This is JWT itself
+
+
+14 OAuth terminologies and flows explained - OAuth tutorial
+-----------------------------------------------------------
+
+Example: User wants to access GD to fetch photos from there and print them on PPS
+Here PPS service wanna access another service #PPS
+
+Terminologies in OAuth: Resource, Resource Owner, Resource Server, Client, Authorization Server
+
+Resource:
+    Also called protected resource
+    Photos on GD
+
+Resource Owner:
+    Person who has access to resource
+    An entity who/which is capable of granting access to a protected resource
+    User, who can give access to GD
+
+Resource Server:
+    The server that is hosting the protected resource
+    Google Drive
+
+Client:
+    Application that makes resource requests on behalf of resource owner and with its authorization
+    Photo Printing Service
+
+Who has burden of security in above situation?
+RESOURCE SERVER / Google Drive
+
+Authorization Server
+    Responsible for making sure whoever is accessing Resource Server is authorized
+    Resource Server has coupled with an Authorization Server
+    GD implements Authorization server which takes care of the Authorization
+    Responsibility is to ensure Authorization is working fine
+    RS and AS are coupled
+    When RS implements OAuth, it is called AS
+    AS could be separate server as well as along with RS
+    This guy issues Access Tokens to the Client
+
+RS: Just to hold/manage resource
+        vs
+AS: To Authorize
+
+3 Flowss covered here
+
+14.1 OAuth Flow 1: Authorization Code Flow
+----
+
+Three parties: Resource Owner, Client, Authorization Server
+To ensure user is able to connect PPS to GDS
+
+Steps:
+    1. Resource Owner(User) to Client(PPS), I wanna print photo but it is on GD, please fetch my photo from GD
+    2. Client(PPS) need to go to Authorization Server, I wanna access this Resource(Files).
+       Authorization Server says Resource Owner(User) might have asked you to contact me but he didn't tell me this I can't trust you. I'll check with Resource Owner(User) if they want you(Client) to access the Resource
+    3. Authorization Server goes to Resource Owner(User), This guy(Client/PPS) wants to access this Resource(Files), You fine with this?
+    4. Resource Owner(User) replies I'm fine, if fact I only had raised the request via Client(PPS)
+    5. Authorization Server can now permit Client(PPS) to access the Resource(Files), in parallel it also shares Authorization Token
+    6. Client uses this Authorization Token and contacts Authorization Server to get a second token --> Access Token. and gets Access Token
+    7. Authorization Server now says: Now we have done both sides of exchanges, I fully trust you. Now I can give you Access Token directly.
+       Go ahead and use this Access Token to contact the Resource Server(GD) and access the Resource(Files).
+    8. Client(PPS) calls Resource Server using the API Call with Access Token
+    9. GD says I'm Resource Server and I've got the Access Token. Let me verify with Authorization Server.
+       Note: As discussed earlier, it can validate itself if Authorization Server and Resource Server are same
+             Alternatively it can go to Authorization Server to verify the Access Token
+       And then Resource Server(GD) grants access to PPS(Client)
+
+Authorization Token here has shortest life span.
+"This is the best and safest flow possible for OAuth."
+
+14.2 OAuth Flow 2: Implicit Flow
+----
+Similar to Flow 1 but a bit simplified
+
+Steps:
+    1. same
+    2. same
+    3. same
+    4. same
+    5. Authorization Server sends the Access Token directly (5 + 6 + 7) instead of Authorization Token exchange
+    8. same
+    9. same
+
+The only difference: There is no exchange of Authorization key with Access key.
+Drawback: What if any tom-dick-harry gets this access token, they can impersonate the original Client and access Resource Server(GD)
+
+Not so secure
+Used with JS Applications
+Primarily used with short lived Access Tokens
+
+14.3 OAuth Flow 3: Client Credentials Flow
+----
+Used when the client is super-duper trustworthy
+As in you only wrote client. Ex: two microservices
+
+Three parties here: MS1, MS2, Auth Server
+
+Steps:
+    1. MS1 wants to access MS2 so it goes to Auth Server
+    2. Auth Server grants a specific token to access only Profile info of MS2
+    3.1 MS1 uses this Access Token to call Profile details of MS2 --> MS2 responds successfully
+    3.2 MS1 uses this Access Token to call Payroll details of MS2 --> MS2 declines the requests and tells MS1 that MS1 is not allowed to access these APIs
+
+
+15. Implementing login with Facebook and Github from scratch
+------------------------------------------------------------
+
+So far in our learning OAuth was for Authorization then why are we talking about OAuth Authentication
+
+Usecase:
+    Three parties: User, PPS, GD
+    User is already authenticated on PPS and GD
+    Client(PPS) and Resource Server(GD) do not trust each other
+
+OAuth call to verify user's identity
+
+Adds SB Hello World Application
+
+15.1 Login via Facebook
+----
+
+Add below two dependencies:
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security.oauth.boot</groupId>
+            <artifactId>spring-security-oauth2-autoconfigure</artifactId>
+            <version>2.0.0.RELEASE</version>
+        </dependency>
+
+and add @EnableOAuth2Sso
+
+What would you need to Authenticate with Facebook?
+
+http://developers.facebook.com/
+Go to mMy Apps: https://developers.facebook.com/apps/
+Create App: My App, pratikaambani@gmail.com - Settings - basic -
+
+App_Name: My App
+App_ID: XXXXXXXXXXXXX
+App_Secret: XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+security:
+  oauth2:
+    client:
+      client-id: App_Id
+      client-secret: App_Secret
+      access-token-uri: https://graph.facebook.com/oauth/access_token
+      user-authorization-uri: https://www.facebook.com/dialog/oauth
+      token-name: oauth_token
+      authentication-scheme: query
+      client-authentication-scheme: form
+    resource:
+      user-info-uri: https://graph.facebook.com/me
+
+prepare a static html page: index.html
+This is it: open: http://localhost:8080/#_=_

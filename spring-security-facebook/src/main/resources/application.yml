@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: spring-security-facebook
+  main:
+    allow-bean-definition-overriding: true #this is added just to run the code
+
+logging:
+  level:
+    org: info
+    org.apache: info
+
+security:
+  oauth2:
+    client:
+      client-id: XXXXXXXXX
+      client-secret: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      access-token-uri: https://graph.facebook.com/oauth/access_token
+      user-authorization-uri: https://www.facebook.com/dialog/oauth
+      token-name: oauth_token
+      authentication-scheme: query
+      client-authentication-scheme: form
+    resource:
+      user-info-uri: https://graph.facebook.com/me

@@ -1,0 +1,25 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: spring-security-jpa-mysql
+  datasource:
+    url: jdbc:mysql://sql12.freesqldatabase.com:3306/sql12354264
+    username: sql12354264
+    password: 5NXfDynVIk
+  jpa:
+    hibernate:
+      ddl-auto: update
+      naming:
+        strategy: org.hibernate.cfg.ImprovedNamingStrategy
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL5Dialect
+    show-sql: true
+
+
+logging:
+  level:
+    org: info
+    org.apache: info

@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: spring-security
+#  security:
+#    user:
+#      name: pratik
+#      password: secretpw
+
+logging:
+  level:
+    org: trace
+    org.apache: info
